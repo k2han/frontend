@@ -11,6 +11,7 @@
       this.volume = 1.0;
       this._wired = false;
       this._pollId = null;
+      this.micCapture = new TAHtml.MicCapture();
     }
 
     initialize() {
@@ -28,7 +29,11 @@
       global.audioWebsocketUrl = this.audioWebsocketUrl;
 
       this.enabled = String(cfg.isAudioEnabled) !== "false";
+      if (!this.enabled) this.micCapture.stop();
       this.volume = Number(cfg.audioVolume ?? 1.0);
+      if (cfg.isMicEnabled !== undefined) {
+        this.micCapture.setAllowed(!["false", "0"].includes(String(cfg.isMicEnabled)));
+      }
 
       try {
         if (typeof global.setAudioEnabled === "function") {
@@ -56,6 +61,7 @@
     }
 
     startFromGesture() {
+      if (this.enabled) void this.micCapture.start();
       try {
         if (typeof global.primeAudioFromGesture === "function") {
           global.primeAudioFromGesture();
@@ -77,6 +83,7 @@
     }
 
     stop() {
+      this.micCapture.stop();
       try {
         if (typeof global.stopAudioPlayback === "function") {
           global.stopAudioPlayback();
