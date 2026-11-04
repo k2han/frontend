@@ -54,15 +54,20 @@ Capture requires a secure context (HTTPS or localhost), `getUserMedia` and
 AudioWorklet. The backend feature switch
 `persist.tesla-android.browser_mic.is_enabled` also defaults to true.
 
-Microphone data reuses the playback WebSocket; no new endpoint is needed. Binary
-client-to-server messages are raw signed 16-bit little-endian mono PCM at 48000 Hz,
+Microphone capture opens a separate same-host WebSocket at
+`(wss|ws)://<location.host>/sockets/mic` (WSS for HTTPS pages, WS otherwise).
+Lighttpd must proxy this path to the microphone bridge on `127.0.0.1:9997`.
+Playback and its WebSocket worker are unchanged. Binary client-to-server messages
+are raw signed 16-bit little-endian mono PCM at 48000 Hz,
 normally 960 samples / 1920 bytes (20 ms). Receivers must accept any even length.
 Text messages are `{"type":"mic","state":"start"}` and
 `{"type":"mic","state":"stop"}`; receivers should discard buffered audio on stop.
 Capture is resampled when necessary, never monitored locally, and dropped rather
-than queued when disconnected or backpressured (at most about 200 ms buffered).
+than queued when disconnected or when `WebSocket.bufferedAmount > 19200`
+(about 200 ms of audio). Capture reconnects while active and sends a fresh start
+message when the microphone socket opens.
 
 Cabin microphone availability on Tesla firmware 2026.26+, its permission UX and
 end-to-end Android recording require verification on the vehicle with the matching
-relay and AudioFlinger changes. Camera restrictions do not establish microphone
+microphone bridge, proxy and AudioFlinger changes. Camera restrictions do not establish microphone
 availability while driving.

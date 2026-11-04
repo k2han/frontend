@@ -3,7 +3,6 @@ let want = false;
 let currentUrl = "";
 let backoff = 1000;
 const MAX_BACKOFF = 10000;
-const MAX_MIC_BYTES = 19200; // 200 ms of mono s16le at 48 kHz.
 
 function connect() {
   if (!want || !currentUrl) return;
@@ -52,21 +51,7 @@ function scheduleReconnect() {
 
 self.onmessage = (e) => {
   const { type, url } = e.data || {};
-  if (type === "send") {
-    const { buf, expires } = e.data;
-    try {
-      if (ws && ws.readyState === 1 && buf instanceof ArrayBuffer &&
-          buf.byteLength % 2 === 0 && ws.bufferedAmount + buf.byteLength <= MAX_MIC_BYTES &&
-          (expires === undefined || Date.now() < expires)) {
-        ws.send(buf);
-      }
-    } catch {}
-    postMessage({ type: "sent" });
-  } else if (type === "sendText") {
-    if (ws && ws.readyState === 1) {
-      try { ws.send(e.data.text); } catch {}
-    }
-  } else if (type === "start" && url) {
+  if (type === "start" && url) {
     want = true;
     currentUrl = url;
     backoff = 1000;

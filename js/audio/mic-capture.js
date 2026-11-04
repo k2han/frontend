@@ -63,9 +63,6 @@
       this._session = null;
       this._logged = false;
       global.addEventListener("pagehide", () => this.stop());
-      global.addEventListener("audio-socket-open", () => {
-        if (this.state === "active") this._sendState("start");
-      });
     }
 
     setEnabled(enabled) {
@@ -119,8 +116,9 @@
         node.port.onmessage = (event) => {
           if (this._session !== session) return;
           const age = Math.max(0, context.currentTime - event.data.time);
-          if (age < 0.18 && typeof global.sendAudioMicFrame === "function") {
-            global.sendAudioMicFrame(event.data.buf, Date.now() + 180 - age * 1000);
+          const socket = session.socket;
+          if (age < 0.18 && socket && socket.readyState === 1 && socket.bufferedAmount <= 19200) {
+            try { socket.send(event.data.buf); } catch {}
           }
           node.port.postMessage("ack");
         };
@@ -132,7 +130,7 @@
         session.source.connect(node);
         // The processor leaves its output silent; never monitor the microphone.
         node.connect(context.destination);
-        this._sendState("start");
+        this._connect(session);
         this._setState("active");
       } catch (error) {
         if (this._session === session) {
@@ -153,13 +151,19 @@
       const session = this._session;
       this._session = null;
       if (session) {
-        this._sendState("stop");
+        this._sendState("stop", session);
         this._release(session);
       }
       this._setState("off");
     }
 
     _release(session) {
+      global.clearTimeout(session.reconnectTimer);
+      if (session.socket) {
+        session.socket.onopen = session.socket.onclose = session.socket.onerror = null;
+        try { session.socket.close(); } catch {}
+        session.socket = null;
+      }
       if (session.node) {
         session.node.port.onmessage = null;
         session.node.port.close();
@@ -172,9 +176,35 @@
       }
     }
 
-    _sendState(state) {
-      if (typeof global.sendAudioMicText === "function") {
-        global.sendAudioMicText(JSON.stringify({ type: "mic", state }));
+    _connect(session) {
+      if (this._session !== session) return;
+      const reconnect = () => {
+        if (this._session === session) {
+          session.reconnectTimer = global.setTimeout(() => this._connect(session), 1000);
+        }
+      };
+      try {
+        const protocol = global.location.protocol === "https:" ? "wss:" : "ws:";
+        const socket = new global.WebSocket(protocol + "//" + global.location.host + "/sockets/mic");
+        session.socket = socket;
+        socket.onopen = () => {
+          if (this._session === session && session.socket === socket) this._sendState("start");
+        };
+        socket.onerror = () => {};
+        socket.onclose = () => {
+          if (session.socket !== socket) return;
+          session.socket = null;
+          reconnect();
+        };
+      } catch (_error) {
+        reconnect();
+      }
+    }
+
+    _sendState(state, session = this._session) {
+      const socket = session && session.socket;
+      if (socket && socket.readyState === 1) {
+        try { socket.send(JSON.stringify({ type: "mic", state })); } catch {}
       }
     }
 
