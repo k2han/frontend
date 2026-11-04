@@ -164,6 +164,7 @@
     if (systemConfiguration) {
       audioController.applyConfiguration({
         audioWebsocketUrl: flavor.audioWebSocket,
+        isMicEnabled: systemConfiguration["persist.tesla-android.browser_mic.is_enabled"] ?? true,
         isAudioEnabled:
           TAHtml.utils.toInt(
             systemConfiguration["persist.tesla-android.browser_audio.is_enabled"],

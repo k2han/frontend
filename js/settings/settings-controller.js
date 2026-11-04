@@ -37,6 +37,10 @@
       this.networkPendingConfig = null;
       this._bindBannerEvents();
       this._bindGlobalEvents();
+      global.addEventListener("mic-state", (event) => {
+        const status = this.content.querySelector("[data-mic-status]");
+        if (status) status.textContent = event.detail;
+      });
     }
 
     async initialize() {
@@ -403,6 +407,23 @@
       this._appendDescription(
         "In case you encounter a situation where the browser in your Tesla fails to produce sound, a simple reboot of the vehicle should resolve the issue. Please note that this is a known issue with the browser itself.",
       );
+      this._appendDivider();
+      const mic = this.audioController.micCapture;
+      this._appendTile({
+        icon: "mic",
+        title: "Microphone (browser)",
+        trailing: this._createSwitch(mic.enabled, (checked) => {
+          mic.setEnabled(checked);
+          if (checked && this.audioController.isAudioEnabled() &&
+              this.audioController.getAudioState() === "playing") {
+            void mic.start();
+          }
+        }),
+      });
+      const status = utils.createElement("div", "settings-description", mic.state);
+      status.setAttribute("data-mic-status", "");
+      status.setAttribute("role", "status");
+      this.content.appendChild(status);
     }
 
     async _renderGpsSection(token) {

@@ -18,6 +18,7 @@
   let sourceBuffer = null;
 
   let worker = null;
+  let micPending = false;
   let queue = [];
   let queueBytes = 0;
   let appending = false;
@@ -39,6 +40,14 @@
     if (audioEl) audioEl.volume = audioVolume;
   };
   window.getAudioEnabled = function() { return isAudioEnabled; };
+  window.sendAudioMicFrame = function(buf, expires) {
+    if (!worker || micPending) return;
+    micPending = true;
+    worker.postMessage({ type: 'send', buf, expires }, [buf]);
+  };
+  window.sendAudioMicText = function(text) {
+    if (worker) worker.postMessage({ type: 'sendText', text });
+  };
 
   window.primeAudioFromGesture = function primeAudioFromGesture() {
     try {
@@ -168,12 +177,17 @@
   function startWorker(url) {
     if (worker) { try { worker.terminate(); } catch {} worker = null; }
     worker = new Worker("./js/audio/audio-ws-worker.js");
+    micPending = false;
     worker.onmessage = (e) => {
       const { type } = e.data || {};
       if (type === 'data') {
         const ab = e.data.buf;
         if (ab && ab.byteLength) enqueue(new Uint8Array(ab));
         processQueue();
+      } else if (type === 'sent') {
+        micPending = false;
+      } else if (type === 'open') {
+        window.dispatchEvent(new CustomEvent('audio-socket-open'));
       } else if (type === 'error') {
         log('WS worker error:', e.data.message);
       }
@@ -183,8 +197,17 @@
 
   function stopWorker() {
     if (!worker) return;
-    try { worker.postMessage({ type: 'stop' }); worker.terminate(); } catch {}
+    const closingWorker = worker;
     worker = null;
+    micPending = false;
+    const timeout = setTimeout(() => closingWorker.terminate(), 250);
+    closingWorker.onmessage = (e) => {
+      if (e.data.type === 'close') {
+        clearTimeout(timeout);
+        closingWorker.terminate();
+      }
+    };
+    try { closingWorker.postMessage({ type: 'stop' }); } catch {}
   }
 
   function setWorkerDropMode(drop) {
